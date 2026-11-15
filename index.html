@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sleeper TV Alerts</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;700&family=Barlow:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --night: #0d1624;
+    --panel: #16233a;
+    --line: #2a3b58;
+    --chalk: #eef0e6;
+    --dim: #93a1bb;
+    --gold: #ffc53d;
+    --live: #ff5a4f;
+    --win: #5fd38d;
+    --display: "Barlow Condensed", "Arial Narrow", Impact, sans-serif;
+    --body: "Barlow", system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--night); color: var(--chalk); font-family: var(--body); font-size: 22px; }
+  body { min-height: 100vh; padding: 2vw 3vw 4vw; }
+  button, input { font: inherit; color: inherit; }
+  button { background: var(--panel); border: 2px solid var(--line); border-radius: 10px; padding: 10px 20px; cursor: pointer; }
+  button:focus, input:focus { outline: 4px solid var(--gold); outline-offset: 2px; }
+  input { background: var(--panel); border: 2px solid var(--line); border-radius: 10px; padding: 12px 16px; width: min(480px, 100%); }
+  .hidden { display: none !important; }
+
+  /* setup */
+  #setup { max-width: 760px; margin: 8vh auto; }
+  #setup h1 { font-family: var(--display); font-size: 64px; margin: 0 0 8px; letter-spacing: .5px; }
+  #setup p { color: var(--dim); line-height: 1.45; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; margin: 18px 0; }
+  .leagues button { display: block; width: 100%; text-align: left; margin-bottom: 10px; font-size: 26px; }
+  .err { color: var(--live); min-height: 1.4em; }
+
+  /* header */
+  header { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; border-bottom: 2px solid var(--line); padding-bottom: 12px; }
+  header h1 { font-family: var(--display); font-size: 44px; margin: 0; }
+  .meta { color: var(--dim); display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
+  .dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: var(--live); margin-right: 8px; animation: pulse 2s infinite; }
+  @keyframes pulse { 50% { opacity: .35; } }
+  @media (prefers-reduced-motion: reduce) { .dot { animation: none; } }
+
+  /* my matchup */
+  #mine { margin: 24px 0; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 20px; background: var(--panel); border: 2px solid var(--line); border-radius: 16px; padding: 28px 36px; }
+  #mine .side { text-align: center; }
+  #mine .name { font-size: 28px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #mine .pts { font-family: var(--display); font-weight: 700; font-size: clamp(72px, 12vw, 160px); line-height: 1; }
+  #mine .lead .pts { color: var(--gold); }
+  #mine .lead .name { color: var(--chalk); }
+  #mine .vs { font-family: var(--display); font-size: 36px; color: var(--dim); }
+  #mine .tag { font-family: var(--display); font-size: 26px; color: var(--dim); }
+
+  /* other matchups + feed */
+  .layout { display: grid; grid-template-columns: 2fr 1fr; gap: 24px; }
+  @media (max-width: 1000px) { .layout { grid-template-columns: 1fr; } #mine { padding: 18px; } }
+  h2 { font-family: var(--display); font-size: 30px; margin: 0 0 12px; font-weight: 500; }
+  .games { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px; }
+  .game { background: var(--panel); border: 2px solid var(--line); border-radius: 12px; padding: 12px 16px; }
+  .game div { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0; }
+  .game .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .game .p { font-family: var(--display); font-size: 30px; font-weight: 700; }
+  .game .up .p { color: var(--gold); }
+  #feed { list-style: none; margin: 0; padding: 0; }
+  #feed li { padding: 10px 0; border-bottom: 1px solid var(--line); line-height: 1.35; }
+  #feed time { color: var(--dim); font-size: 17px; display: block; }
+  #feed li.mine { color: var(--gold); }
+  .empty { color: var(--dim); }
+
+  /* toasts */
+  #toasts { position: fixed; top: 2vw; right: 2vw; display: flex; flex-direction: column; gap: 12px; width: min(560px, 92vw); z-index: 10; }
+  .toast { background: var(--gold); color: #1a1400; border-radius: 14px; padding: 18px 24px; box-shadow: 0 10px 40px rgba(0,0,0,.5); font-size: 30px; font-weight: 600; line-height: 1.2; animation: pop .35s ease-out; }
+  .toast.other { background: var(--chalk); color: #0d1624; }
+  .toast.bad { background: var(--live); color: #fff; }
+  .toast small { display: block; font-size: 19px; font-weight: 400; opacity: .8; margin-top: 4px; }
+  @keyframes pop { from { transform: translateX(40px); opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { .toast { animation: none; } }
+</style>
+</head>
+<body>
+
+<section id="setup" class="hidden">
+  <h1>Sleeper on your TV</h1>
+  <p>Enter your Sleeper username. This page reads your league's public scores and activity and pops up alerts on screen. It never needs your password.</p>
+  <div class="row">
+    <input id="username" placeholder="Sleeper username" autocomplete="off" autocapitalize="none">
+    <button id="findLeagues">Find my leagues</button>
+  </div>
+  <div class="err" id="setupErr"></div>
+  <div class="leagues" id="leagueList"></div>
+</section>
+
+<main id="app" class="hidden">
+  <header>
+    <h1 id="leagueName"></h1>
+    <div class="meta">
+      <span><span class="dot"></span><span id="weekLabel"></span></span>
+      <span id="updated"></span>
+      <button id="toggleScope"></button>
+      <button id="switchLeague">Change league</button>
+    </div>
+  </header>
+
+  <section id="mine"></section>
+
+  <div class="layout">
+    <section>
+      <h2>Around the league</h2>
+      <div class="games" id="games"></div>
+    </section>
+    <section>
+      <h2>Activity</h2>
+      <ul id="feed"><li class="empty">Alerts will show up here.</li></ul>
+    </section>
+  </div>
+</main>
+
+<div id="toasts" aria-live="polite"></div>
+
+<script>
+(function () {
+  var API = "https://api.sleeper.app/v1";
+  var POLL_MS = 30000;
+  var TOAST_MS = 12000;
+
+  var $ = function (id) { return document.getElementById(id); };
+  var cfg = load("sleeperTV") || {
+    userId: "886005075347193856",
+    username: "masonsmasal",
+    leagueId: "1353434865357295616",
+    leagueName: "NMHBA fantasy dynasty",
+    onlyMine: false
+  };
+  var timer = null;
+  var prev = null;          // { points: {rosterId: pts}, leadMine: bool|null }
+  var seenTxns = null;      // object of transaction ids
+  var players = null;       // lazy-loaded player names
+  var feedEmpty = true;
+
+  function load(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } }
+  function save(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+  function esc(s) { var d = document.createElement("div"); d.textContent = s == null ? "" : s; return d.innerHTML; }
+  function get(path) {
+    return fetch(API + path).then(function (r) {
+      if (!r.ok) throw new Error("Sleeper returned " + r.status);
+      return r.json();
+    });
+  }
+  function fmt(n) { return (Math.round((n || 0) * 100) / 100).toFixed(2); }
+
+  /* ---------- setup ---------- */
+  function showSetup() {
+    $("app").classList.add("hidden");
+    $("setup").classList.remove("hidden");
+    clearInterval(timer);
+    var q = new URLSearchParams(location.search).get("u");
+    if (q) { $("username").value = q; findLeagues(); }
+  }
+
+  function findLeagues() {
+    var name = $("username").value.trim().replace(/^@/, "");
+    if (!name) { $("setupErr").textContent = "Type your Sleeper username first."; return; }
+    $("setupErr").textContent = "Looking you up…";
+    $("leagueList").innerHTML = "";
+    var user;
+    get("/user/" + encodeURIComponent(name)).then(function (u) {
+      if (!u || !u.user_id) throw new Error("Sleeper has no username \"" + name + "\". Use the username from Sleeper app > Profile > Settings (not your display name), or paste your numeric user ID.");
+      user = u;
+      return get("/state/nfl");
+    }).then(function (st) {
+      return get("/user/" + user.user_id + "/leagues/nfl/" + st.season);
+    }).then(function (leagues) {
+      if (!leagues.length) { $("setupErr").textContent = "No NFL leagues found for this season."; return; }
+      $("setupErr").textContent = "Pick a league:";
+      leagues.forEach(function (lg) {
+        var b = document.createElement("button");
+        b.textContent = lg.name;
+        b.onclick = function () {
+          cfg = { userId: user.user_id, username: user.username, leagueId: lg.league_id, leagueName: lg.name, onlyMine: false };
+          save("sleeperTV", cfg);
+          start();
+        };
+        $("leagueList").appendChild(b);
+      });
+      var first = $("leagueList").querySelector("button");
+      if (first) first.focus();
+    }).catch(function (e) {
+      var network = e && e.name === "TypeError";
+      $("setupErr").textContent = network
+        ? "This browser couldn't reach api.sleeper.app (" + e.message + "). Check the TV's internet, and make sure the page is opened from its web address, not as a saved file."
+        : e.message;
+    });
+  }
+
+  /* ---------- alerts ---------- */
+  function toast(text, sub, kind) {
+    var el = document.createElement("div");
+    el.className = "toast " + (kind || "");
+    el.innerHTML = esc(text) + (sub ? "<small>" + esc(sub) + "</small>" : "");
+    $("toasts").appendChild(el);
+    setTimeout(function () { el.remove(); }, TOAST_MS);
+  }
+
+  function logFeed(text, mine) {
+    if (feedEmpty) { $("feed").innerHTML = ""; feedEmpty = false; }
+    var li = document.createElement("li");
+    if (mine) li.className = "mine";
+    var t = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    li.innerHTML = "<time>" + esc(t) + "</time>" + esc(text);
+    $("feed").insertBefore(li, $("feed").firstChild);
+    while ($("feed").children.length > 25) $("feed").removeChild($("feed").lastChild);
+  }
+
+  function alertEvent(text, sub, mine, bad) {
+    logFeed(text + (sub ? " — " + sub : ""), mine);
+    if (cfg.onlyMine && !mine) return;
+    toast(text, sub, bad ? "bad" : (mine ? "" : "other"));
+  }
+
+  /* ---------- polling ---------- */
+  function start() {
+    $("setup").classList.add("hidden");
+    $("app").classList.remove("hidden");
+    $("leagueName").textContent = cfg.leagueName;
+    $("toggleScope").textContent = cfg.onlyMine ? "Alerts: my team only" : "Alerts: whole league";
+    prev = null; seenTxns = null; feedEmpty = true;
+    $("feed").innerHTML = '<li class="empty">Alerts will show up here.</li>';
+    poll();
+    clearInterval(timer);
+    timer = setInterval(poll, POLL_MS);
+  }
+
+  function poll() {
+    var week;
+    get("/state/nfl").then(function (st) {
+      week = st.week || st.display_week || 1;
+      $("weekLabel").textContent = "Week " + week;
+      var id = cfg.leagueId;
+      return Promise.all([
+        get("/league/" + id + "/matchups/" + week),
+        get("/league/" + id + "/rosters"),
+        get("/league/" + id + "/users"),
+        get("/league/" + id + "/transactions/" + week)
+      ]);
+    }).then(function (r) {
+      var names = teamNames(r[1], r[2]);
+      var mineRoster = null;
+      r[1].forEach(function (ro) { if (ro.owner_id === cfg.userId) mineRoster = ro.roster_id; });
+      render(r[0], names, mineRoster);
+      diffPoints(r[0], names, mineRoster);
+      diffTxns(r[3], names, mineRoster);
+      $("updated").textContent = "Updated " + new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" });
+    }).catch(function (e) {
+      $("updated").textContent = "Can't reach Sleeper — retrying (" + (e && e.message ? e.message : e) + ")";
+    });
+  }
+
+  function teamNames(rosters, users) {
+    var byOwner = {};
+    users.forEach(function (u) {
+      byOwner[u.user_id] = (u.metadata && u.metadata.team_name) || u.display_name || u.username;
+    });
+    var out = {};
+    rosters.forEach(function (ro) { out[ro.roster_id] = byOwner[ro.owner_id] || ("Team " + ro.roster_id); });
+    return out;
+  }
+
+  function diffPoints(matchups, names, mineRoster) {
+    var pts = {};
+    matchups.forEach(function (m) { pts[m.roster_id] = m.points || 0; });
+
+    var leadMine = null;
+    var mine = matchups.filter(function (m) { return m.roster_id === mineRoster; })[0];
+    if (mine) {
+      var opp = matchups.filter(function (m) { return m.matchup_id === mine.matchup_id && m.roster_id !== mineRoster; })[0];
+      if (opp && (mine.points || opp.points)) leadMine = mine.points > opp.points;
+    }
+
+    if (prev) {
+      matchups.forEach(function (m) {
+        var d = (pts[m.roster_id] || 0) - (prev.points[m.roster_id] || 0);
+        if (Math.abs(d) >= 0.1) {
+          var isMine = m.roster_id === mineRoster;
+          var sign = d > 0 ? "+" : "";
+          alertEvent(names[m.roster_id] + " " + sign + fmt(d), "Now at " + fmt(pts[m.roster_id]), isMine, isMine && d < 0);
+        }
+      });
+      if (leadMine !== null && prev.leadMine !== null && leadMine !== prev.leadMine) {
+        alertEvent(leadMine ? "You took the lead" : "You lost the lead", "Matchup flipped", true, !leadMine);
+      }
+    }
+    prev = { points: pts, leadMine: leadMine };
+  }
+
+  function diffTxns(txns, names, mineRoster) {
+    var done = (txns || []).filter(function (t) { return t.status === "complete"; });
+    if (seenTxns === null) {   // first load: remember, don't alert
+      seenTxns = {};
+      done.forEach(function (t) { seenTxns[t.transaction_id] = 1; });
+      return;
+    }
+    var fresh = done.filter(function (t) { return !seenTxns[t.transaction_id]; });
+    if (!fresh.length) return;
+    fresh.forEach(function (t) { seenTxns[t.transaction_id] = 1; });
+    withPlayers(function () {
+      fresh.forEach(function (t) {
+        var team = names[(t.roster_ids || [])[0]] || "A team";
+        var isMine = (t.roster_ids || []).indexOf(mineRoster) !== -1;
+        var adds = Object.keys(t.adds || {}).map(pname);
+        var drops = Object.keys(t.drops || {}).map(pname);
+        if (t.type === "trade") {
+          alertEvent("Trade completed", (t.roster_ids || []).map(function (id) { return names[id]; }).join(" and "), isMine);
+        } else {
+          var bits = [];
+          if (adds.length) bits.push("added " + adds.join(", "));
+          if (drops.length) bits.push("dropped " + drops.join(", "));
+          alertEvent(team + " " + (t.type === "waiver" ? "won a waiver claim" : "made a move"), bits.join("; "), isMine);
+        }
+      });
+    });
+  }
+
+  function pname(id) {
+    var p = players && players[id];
+    return p ? (p.full_name || ((p.first_name || "") + " " + (p.last_name || ""))) : ("Player " + id);
+  }
+  function withPlayers(cb) {
+    if (players) return cb();
+    get("/players/nfl").then(function (p) { players = p; cb(); }).catch(function () { cb(); });
+  }
+
+  /* ---------- render ---------- */
+  function render(matchups, names, mineRoster) {
+    var groups = {};
+    matchups.forEach(function (m) { (groups[m.matchup_id] = groups[m.matchup_id] || []).push(m); });
+
+    var mineGroup = null, others = [];
+    Object.keys(groups).forEach(function (k) {
+      var g = groups[k];
+      if (g.some(function (m) { return m.roster_id === mineRoster; })) mineGroup = g; else others.push(g);
+    });
+
+    if (mineGroup) {
+      var me = mineGroup.filter(function (m) { return m.roster_id === mineRoster; })[0];
+      var opp = mineGroup.filter(function (m) { return m.roster_id !== mineRoster; })[0];
+      var meLead = !opp || me.points >= opp.points;
+      $("mine").innerHTML =
+        side(names[me.roster_id], me.points, meLead, "You") +
+        '<div class="vs">vs</div>' +
+        side(opp ? names[opp.roster_id] : "Bye", opp ? opp.points : 0, opp ? !meLead : false, "");
+    } else {
+      $("mine").innerHTML = '<div class="empty">No matchup found for you this week.</div>';
+    }
+
+    $("games").innerHTML = others.map(function (g) {
+      var hi = Math.max.apply(null, g.map(function (m) { return m.points || 0; }));
+      return '<div class="game">' + g.map(function (m) {
+        var up = (m.points || 0) === hi && hi > 0;
+        return '<div class="' + (up ? "up" : "") + '"><span class="t">' + esc(names[m.roster_id]) + '</span><span class="p">' + fmt(m.points) + "</span></div>";
+      }).join("") + "</div>";
+    }).join("") || '<div class="empty">No other matchups this week.</div>';
+  }
+
+  function side(name, pts, lead, tag) {
+    return '<div class="side ' + (lead ? "lead" : "") + '"><div class="tag">' + esc(tag) + '&nbsp;</div><div class="pts">' + fmt(pts) +
+           '</div><div class="name">' + esc(name) + "</div></div>";
+  }
+
+  /* ---------- wiring ---------- */
+  $("findLeagues").onclick = findLeagues;
+  $("username").onkeydown = function (e) { if (e.key === "Enter") findLeagues(); };
+  $("switchLeague").onclick = showSetup;
+  $("toggleScope").onclick = function () {
+    cfg.onlyMine = !cfg.onlyMine; save("sleeperTV", cfg);
+    $("toggleScope").textContent = cfg.onlyMine ? "Alerts: my team only" : "Alerts: whole league";
+  };
+
+  if (cfg.leagueId && cfg.userId) start(); else showSetup();
+})();
+</script>
+</body>
+</html>
